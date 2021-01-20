@@ -64,6 +64,17 @@ const OptionId SearchParams::kMaxPrefetchBatchId{
     "When the engine cannot gather a large enough batch for immediate use, try "
     "to prefetch up to X positions which are likely to be useful soon, and put "
     "them into cache."};
+const OptionId SearchParams::kPolicyFactorId{
+    "policy-factor", "PolicyFactor",
+    "Decides how fast Policies will increase with number of node visits. "
+    "Using CPuctFactor = 0 and CPuctFactorAtRoot = 0 is recommended."};
+const OptionId SearchParams::kPolicyFactorParentId{
+    "policy-factor-parent", "PolicyFactorParent",
+    "Decides how fast Policies will increase with number of parent node visits. "
+    "Using CPuctFactor = 0 and CPuctFactorAtRoot = 0 is recommended."};
+const OptionId SearchParams::kPolicyExponentId{
+    "policy-exponent", "PolicyExponent",
+    "Sets the rate Policies will increase to 1."};
 const OptionId SearchParams::kCpuctId{
     "cpuct", "CPuct",
     "cpuct_init constant from \"UCT search\" algorithm. Higher values promote "
@@ -281,12 +292,15 @@ void SearchParams::Populate(OptionsParser* options) {
   // Many of them are overridden with training specific values in tournament.cc.
   options->Add<IntOption>(kMiniBatchSizeId, 1, 1024) = DEFAULT_MINIBATCH_SIZE;
   options->Add<IntOption>(kMaxPrefetchBatchId, 0, 1024) = DEFAULT_MAX_PREFETCH;
-  options->Add<FloatOption>(kCpuctId, 0.0f, 100.0f) = 2.147f;
-  options->Add<FloatOption>(kCpuctAtRootId, 0.0f, 100.0f) = 2.147f;
+  options->Add<FloatOption>(kPolicyFactorId, 0.0f, 10.0f) = 0.024f;
+  options->Add<FloatOption>(kPolicyFactorParentId, 0.0f, 10.0f) = 0.00002f;
+  options->Add<FloatOption>(kPolicyExponentId, 0.0f, 10.0f) = 0.19f;
+  options->Add<FloatOption>(kCpuctId, 0.0f, 100.0f) =3.0f;
+  options->Add<FloatOption>(kCpuctAtRootId, 0.0f, 100.0f) = 3.0f;
   options->Add<FloatOption>(kCpuctBaseId, 1.0f, 1000000000.0f) = 18368.0f;
   options->Add<FloatOption>(kCpuctBaseAtRootId, 1.0f, 1000000000.0f) = 18368.0f;
-  options->Add<FloatOption>(kCpuctFactorId, 0.0f, 1000.0f) = 2.815f;
-  options->Add<FloatOption>(kCpuctFactorAtRootId, 0.0f, 1000.0f) = 2.815f;
+  options->Add<FloatOption>(kCpuctFactorId, 0.0f, 1000.0f) = 0.0f;
+  options->Add<FloatOption>(kCpuctFactorAtRootId, 0.0f, 1000.0f) = 0.0f;
   options->Add<BoolOption>(kRootHasOwnCpuctParamsId) = true;
   options->Add<BoolOption>(kTwoFoldDrawsId) = true;
   options->Add<FloatOption>(kTemperatureId, 0.0f, 100.0f) = 0.0f;
@@ -303,12 +317,12 @@ void SearchParams::Populate(OptionsParser* options) {
   options->Add<BoolOption>(kLogLiveStatsId) = false;
   std::vector<std::string> fpu_strategy = {"reduction", "absolute"};
   options->Add<ChoiceOption>(kFpuStrategyId, fpu_strategy) = "reduction";
-  options->Add<FloatOption>(kFpuValueId, -100.0f, 100.0f) = 0.443f;
+  options->Add<FloatOption>(kFpuValueId, -100.0f, 100.0f) = 0.6f;
   fpu_strategy.push_back("same");
-  options->Add<ChoiceOption>(kFpuStrategyAtRootId, fpu_strategy) = "same";
+  options->Add<ChoiceOption>(kFpuStrategyAtRootId, fpu_strategy) = "absolute";
   options->Add<FloatOption>(kFpuValueAtRootId, -100.0f, 100.0f) = 1.0f;
   options->Add<IntOption>(kCacheHistoryLengthId, 0, 7) = 0;
-  options->Add<FloatOption>(kPolicySoftmaxTempId, 0.1f, 10.0f) = 1.607f;
+  options->Add<FloatOption>(kPolicySoftmaxTempId, 0.1f, 10.0f) = 2.0f;
   options->Add<IntOption>(kMaxCollisionEventsId, 1, 65536) = 32;
   options->Add<IntOption>(kMaxCollisionVisitsId, 1, 1000000) = 9999;
   options->Add<BoolOption>(kOutOfOrderEvalId) = true;
@@ -358,6 +372,9 @@ void SearchParams::Populate(OptionsParser* options) {
 
 SearchParams::SearchParams(const OptionsDict& options)
     : options_(options),
+      kPolicyFactor(options.Get<float>(kPolicyFactorId)),
+      kPolicyFactorParent(options.Get<float>(kPolicyFactorParentId)),
+      kPolicyExponent(options.Get<float>(kPolicyExponentId)),
       kCpuct(options.Get<float>(kCpuctId)),
       kCpuctAtRoot(options.Get<float>(
           options.Get<bool>(kRootHasOwnCpuctParamsId) ? kCpuctAtRootId

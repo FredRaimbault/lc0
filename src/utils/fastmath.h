@@ -77,4 +77,21 @@ inline float FastLog(const float a) {
 // Fast approximate exp(x). Does only limited range checking.
 inline float FastExp(const float a) { return FastPow2(1.442695040f * a); }
 
+// Fast approximate x^y. Works for x>0 and saturates on underflow.
+// The approximation used here is a combination of log2(2^N*(1+f)) ~ N+f+k
+// and 2^(N+f) ~ 2^N*(1+f-k) with N integer and f the fractional part, f>=0.
+// The constant k is used to tune the approximation accuracy.
+inline float FastPow(const float a, const float b) {
+  int32_t tmp;
+  std::memcpy(&tmp, &a, sizeof(float));
+  tmp -= 0x3f78aa40;
+  float out;
+  tmp = static_cast<int>(tmp * b + 1064872512.0f);
+  if (tmp < 0x800000) {
+    return 1.17549435E-38;
+  }
+  std::memcpy(&out, &tmp, sizeof(float));
+  return out;
+}
+
 }  // namespace lczero

@@ -359,16 +359,25 @@ std::vector<std::string> Search::GetVerboseStats(Node* node) const {
   const float cpuct = ComputeCpuct(params_, node->GetN(), is_root);
   const float U_coeff =
       cpuct * std::sqrt(std::max(node->GetChildrenVisits(), 1u));
+  const float policy_factor = params_.GetPolicyFactor();
+  const float policy_factor_parent = params_.GetPolicyFactorParent();
+  const float policy_exponent = params_.GetPolicyExponent();
   std::vector<EdgeAndNode> edges;
   for (const auto& edge : node->Edges()) edges.push_back(edge);
 
-  std::sort(edges.begin(), edges.end(),
-            [&fpu, &U_coeff, &draw_score](EdgeAndNode a, EdgeAndNode b) {
-              return std::forward_as_tuple(
-                         a.GetN(), a.GetQ(fpu, draw_score) + a.GetU(U_coeff)) <
-                     std::forward_as_tuple(
-                         b.GetN(), b.GetQ(fpu, draw_score) + b.GetU(U_coeff));
-            });
+  std::sort(
+      edges.begin(), edges.end(),
+      [&fpu, &U_coeff, &draw_score, &policy_factor,
+                &policy_factor_parent, &policy_exponent](EdgeAndNode a, EdgeAndNode b) {
+        return std::forward_as_tuple(
+                   a.GetN(),
+                   a.GetQ(fpu, draw_score) +
+                   a.GetU(U_coeff, policy_factor, policy_factor_parent, policy_exponent)) <
+               std::forward_as_tuple(
+                   b.GetN(),
+                   b.GetQ(fpu, draw_score) +
+                   b.GetU(U_coeff, policy_factor, policy_factor_parent, policy_exponent));
+      });
 
   auto print = [](auto* oss, auto pre, auto v, auto post, auto w, int p = 0) {
     *oss << pre << std::setw(w) << std::setprecision(p) << v << post;
@@ -439,8 +448,12 @@ std::vector<std::string> Search::GetVerboseStats(Node* node) const {
                edge.GetMove().as_nn_index(0), edge.GetN(), edge.GetNInFlight(),
                edge.GetP());
     print_stats(&oss, edge.node());
-    print(&oss, "(U: ", edge.GetU(U_coeff), ") ", 6, 5);
-    print(&oss, "(S: ", Q + edge.GetU(U_coeff) + M, ") ", 8, 5);
+    print(&oss, "(U: ", edge.GetU(U_coeff,
+            params_.GetPolicyFactor(), params_.GetPolicyFactorParent(),
+            params_.GetPolicyExponent()), ") ", 6, 5);
+    print(&oss, "(S: ", Q + edge.GetU(U_coeff,
+            params_.GetPolicyFactor(), params_.GetPolicyFactorParent(),
+            params_.GetPolicyExponent()) + M, ") ", 8, 5);
     print_tail(&oss, edge.node());
     infos.emplace_back(oss.str());
   }
@@ -1268,7 +1281,10 @@ SearchWorker::NodeToProcess SearchWorker::PickNodeToExtend(
       const float Q = child.GetQ(fpu, draw_score);
       const float M = m_evaluator.GetM(child, Q);
 
-      const float score = child.GetU(puct_mult) + Q + M;
+      const float score = child.GetU(puct_mult, params_.GetPolicyFactor(),
+                              params_.GetPolicyFactorParent(),
+                              params_.GetPolicyExponent()) + Q + M;
+
       if (score > best) {
         second_best = best;
         second_best_edge = best_edge;
@@ -1290,7 +1306,9 @@ SearchWorker::NodeToProcess SearchWorker::PickNodeToExtend(
 
     if (second_best_edge) {
       int estimated_visits_to_change_best =
-          best_edge.GetVisitsToReachU(second_best, puct_mult, best_without_u);
+          best_edge.GetVisitsToReachU(second_best, puct_mult, best_without_u,
+                      params_.GetPolicyFactor(), params_.GetPolicyFactorParent(),
+                      params_.GetPolicyExponent());
       // Only cache for n-2 steps as the estimate created by GetVisitsToReachU
       // has potential rounding errors and some conservative logic that can push
       // it up to 2 away from the real value.
@@ -1535,7 +1553,10 @@ int SearchWorker::PrefetchIntoCache(Node* node, int budget, bool is_odd_depth) {
     if (edge.GetP() == 0.0f) continue;
     // Flip the sign of a score to be able to easily sort.
     // TODO: should this use logit_q if set??
-    scores.emplace_back(-edge.GetU(puct_mult) - edge.GetQ(fpu, draw_score),
+    scores.emplace_back(-edge.GetU(puct_mult, params_.GetPolicyFactor(),
+                               params_.GetPolicyFactorParent(),
+                               params_.GetPolicyExponent()) -
+                            edge.GetQ(fpu, draw_score),
                         edge);
   }
 
@@ -1570,9 +1591,10 @@ int SearchWorker::PrefetchIntoCache(Node* node, int budget, bool is_odd_depth) {
       const float q = edge.GetQ(-fpu, draw_score);
       if (next_score > q) {
         budget_to_spend =
-            std::min(budget, int(edge.GetP() * puct_mult / (next_score - q) -
-                                 edge.GetNStarted()) +
-                                 1);
+            std::min(budget, int(edge.GetPEffect(params_.GetPolicyFactor(),
+                                                 params_.GetPolicyFactorParent(),
+                                                 params_.GetPolicyExponent()) *
+                     puct_mult / (next_score - q) - edge.GetNStarted()) + 1);
       } else {
         budget_to_spend = budget;
       }
