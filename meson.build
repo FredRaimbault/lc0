@@ -167,6 +167,7 @@ files += [
   'src/mcts/params.cc',
   'src/mcts/search.cc',
   'src/mcts/stoppers/alphazero.cc',
+  'src/mcts/stoppers/alphazero_autoscaled.cc',
   'src/mcts/stoppers/common.cc',
   'src/mcts/stoppers/factory.cc',
   'src/mcts/stoppers/legacy.cc',
