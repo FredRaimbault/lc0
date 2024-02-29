@@ -2,17 +2,19 @@ version: 2
 jobs:
   build:
     docker:
-      - image: danieluranga/leela_chess_zero-lc0_ubuntu_builder:0.0.8
+      - image: nvidia/cuda:11.3.1-cudnn8-devel-ubuntu18.04
     steps:
       - checkout
       - run:
-          name: "Pull Submodules"
+          name: Install build tools
           command: |
-            git submodule init
-            git submodule update --remote
+            apt-get update
+            apt-get -y install git python3-pip gcc-8 g++-8 zlib1g zlib1g-dev
+            pip3 install meson==0.58.1
+            pip3 install ninja
       - run:
-          name: Update Meson
-          command: pip3 install --upgrade meson==0.58.1
+          name: "Pull Submodules"
+          command: git submodule update --init
       - run:
           name: Meson GCC
           environment:
@@ -23,17 +25,15 @@ jobs:
           name: Build GCC
           command: |
             cd build-gcc
-            ninja -j 4
+            ninja
   "mac":
     macos:
-      xcode: 13.4.1
+      xcode: 14.1.0
     steps:
       - checkout
       - run:
           name: "Pull Submodules"
-          command: |
-            git submodule init
-            git submodule update --remote
+          command: git submodule update --init --no-single-branch
       - run:
           name: Install build tools
           command: |
@@ -59,7 +59,7 @@ jobs:
           command: lipo -create -o /tmp/lc0 build/lc0 build-arm/lc0
       - store_artifacts:
           path: /tmp/lc0
-          destination: lc0-macos_12.3.1
+          destination: lc0-macos_12.5.1
 workflows:
   version: 2
   builds:
